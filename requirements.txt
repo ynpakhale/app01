@@ -1,5 +1,3 @@
 streamlit
 requests
-chromadb
-sentence-transformers
 PyPDF2
