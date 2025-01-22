@@ -46,18 +46,7 @@ if prompt := st.chat_input("What would you like to know?"):
     context = " ".join(st.session_state.document_texts)
     
     # Create chat prompt
-    system_prompt = """You are a helpful AI assistant that answers questions based on the provided document context. 
-    Keep your answers focused on the information in the context. If the answer cannot be found in the context, say so."""
-    
-    formatted_prompt = f"""### System:
-{system_prompt}
-
-### Context:
-{context}
-
-### Human: {prompt}
-
-### Assistant:"""
+    chat_prompt = f"Context: {context}\n\nQuestion: {prompt}\n\nAnswer:"
 
     # Call DeepSeek-R1 API
     API_URL = "https://api-inference.huggingface.co/models/deepseek-ai/DeepSeek-R1"
@@ -67,35 +56,41 @@ if prompt := st.chat_input("What would you like to know?"):
     }
     
     payload = {
-        "inputs": formatted_prompt,
+        "inputs": chat_prompt,
         "parameters": {
-            "max_new_tokens": 1000,
+            "max_new_tokens": 500,
             "temperature": 0.7,
-            "top_p": 0.95,
-            "do_sample": True,
-            "return_full_text": False
+            "top_k": 50,
+            "top_p": 0.95
         }
     }
     
     try:
         with st.spinner('Thinking...'):
             response = requests.post(API_URL, headers=headers, json=payload)
-            response_data = response.json()
+            st.write(f"Debug - API Response: {response.text}")  # Debug line
             
-            # Extract the generated text from the response
-            if isinstance(response_data, list) and len(response_data) > 0:
-                answer = response_data[0].get('generated_text', '').strip()
+            if response.status_code == 200:
+                response_data = response.json()
+                # Check if response is a list
+                if isinstance(response_data, list):
+                    answer = response_data[0].get('generated_text', '')
+                else:
+                    answer = response_data.get('generated_text', '')
+                
+                if answer:
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                    with st.chat_message("assistant"):
+                        st.markdown(answer)
+                else:
+                    st.error("Received empty response from API")
             else:
-                answer = "I apologize, but I couldn't process that request. Please try again."
-            
-            # Add assistant message to chat history
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-            with st.chat_message("assistant"):
-                st.markdown(answer)
+                st.error(f"API returned status code: {response.status_code}")
     
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
-        st.error("Please try again or contact support if the problem persists.")
+        st.error("Response details for debugging:")
+        st.write(response.text if 'response' in locals() else "No response received")
 
 # Sidebar with instructions
 with st.sidebar:
