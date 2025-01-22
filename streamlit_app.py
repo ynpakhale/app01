@@ -1,20 +1,16 @@
 import streamlit as st
 import requests
 import json
-from chromadb import Client
-from sentence_transformers import SentenceTransformer
 import PyPDF2
 import io
-
-# Initialize ChromaDB
-chroma_client = Client()
-collection = chroma_client.create_collection(name="my_documents")
-
-# Initialize the embedding model
-embedder = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+from collections import defaultdict
 
 # Streamlit interface setup
 st.title("Document Chat Assistant")
+
+# Initialize session state for storing document text
+if 'document_texts' not in st.session_state:
+    st.session_state.document_texts = []
 
 # File uploader
 uploaded_file = st.file_uploader("Upload a PDF document", type="pdf")
@@ -26,16 +22,8 @@ if uploaded_file:
     for page in pdf_reader.pages:
         text += page.extract_text()
     
-    # Split text into chunks (simple approach)
-    chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
-    
-    # Generate embeddings and store in ChromaDB
-    embeddings = embedder.encode(chunks).tolist()
-    collection.add(
-        documents=chunks,
-        embeddings=embeddings,
-        ids=[f"doc_{i}" for i in range(len(chunks))]
-    )
+    # Store text in session state
+    st.session_state.document_texts.append(text)
     st.success("Document processed and stored!")
 
 # Chat interface
@@ -49,14 +37,8 @@ for message in st.session_state.messages:
 if prompt := st.chat_input("What would you like to know?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     
-    # Search relevant documents
-    query_embedding = embedder.encode(prompt).tolist()
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=2
-    )
-    
-    context = " ".join(results['documents'][0])
+    # Prepare context from all stored documents
+    context = " ".join(st.session_state.document_texts)
     
     # Prepare prompt with context
     full_prompt = f"""Context: {context}\n\nQuestion: {prompt}\n\nAnswer based on the context provided:"""
@@ -64,9 +46,9 @@ if prompt := st.chat_input("What would you like to know?"):
     # Call DeepSeek API
     API_URL = "https://api-inference.huggingface.co/models/deepseek-ai/deepseek-coder-33b-instruct"
     headers = {
-    "Authorization": f"Bearer {st.secrets['HUGGINGFACE_TOKEN']}",
-    "Content-Type": "application/json"
-   }
+        "Authorization": f"Bearer {st.secrets['HUGGINGFACE_TOKEN']}",
+        "Content-Type": "application/json"
+    }
     
     payload = {
         "prompt": full_prompt,
