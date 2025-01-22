@@ -64,9 +64,9 @@ if prompt := st.chat_input("What would you like to know?"):
     # Call DeepSeek API
     API_URL = "https://api-inference.huggingface.co/models/deepseek-ai/deepseek-coder-33b-instruct"
     headers = {
-        "Authorization": "Bearer YOUR_API_KEY",
-        "Content-Type": "application/json"
-    }
+    "Authorization": f"Bearer {st.secrets['HUGGINGFACE_TOKEN']}",
+    "Content-Type": "application/json"
+   }
     
     payload = {
         "prompt": full_prompt,
