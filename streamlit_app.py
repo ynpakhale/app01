@@ -3,6 +3,7 @@ import requests
 import json
 import PyPDF2
 import io
+import time
 from collections import defaultdict
 
 # Streamlit interface setup
@@ -65,14 +66,32 @@ if prompt := st.chat_input("What would you like to know?"):
         }
     }
     
+    # Function to make API call with retry
+    def query_model(max_retries=5, initial_wait=10):
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(API_URL, headers=headers, json=payload)
+                response_json = response.json()
+                
+                # Check if model is loading
+                if response.status_code == 503 and "estimated_time" in str(response_json):
+                    wait_time = min(initial_wait * (attempt + 1), 60)  # Progressive wait, max 60 seconds
+                    with st.spinner(f'Model is warming up... Waiting {wait_time} seconds. Attempt {attempt + 1}/{max_retries}'):
+                        time.sleep(wait_time)
+                    continue
+                
+                return response, response_json
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(initial_wait)
+        return None, None
+
     try:
-        with st.spinner('Thinking...'):
-            response = requests.post(API_URL, headers=headers, json=payload)
-            st.write(f"Debug - API Response: {response.text}")  # Debug line
+        with st.spinner('Processing your question...'):
+            response, response_data = query_model()
             
-            if response.status_code == 200:
-                response_data = response.json()
-                # Check if response is a list
+            if response and response.status_code == 200:
                 if isinstance(response_data, list):
                     answer = response_data[0].get('generated_text', '')
                 else:
@@ -84,13 +103,14 @@ if prompt := st.chat_input("What would you like to know?"):
                         st.markdown(answer)
                 else:
                     st.error("Received empty response from API")
-            else:
+            elif response:
                 st.error(f"API returned status code: {response.status_code}")
+                st.write("Response:", response_data)
+            else:
+                st.error("Failed to get response after multiple retries")
     
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
-        st.error("Response details for debugging:")
-        st.write(response.text if 'response' in locals() else "No response received")
 
 # Sidebar with instructions
 with st.sidebar:
@@ -105,4 +125,5 @@ with st.sidebar:
     - Supports PDF files only
     - Maximum file size: 200MB
     - Processing large files may take a few moments
+    - First query may take longer as the model warms up
     """)
